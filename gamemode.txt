@@ -1,0 +1,10 @@
+ADDON Gamemode_MineyThingy
+ADDON Script_EasyExecute
+ADDON Server_Redeval
+ADDON Print_ModTer_Default
+ADDON Print_ModTer_Test
+
+$EnvGuiServer::SimpleMode 1
+$EnvGuiServer::SkyFile Add-Ons/Sky_Skylands/Skylands.dml
+$EnvGuiServer::WaterFile None
+$EnvGuiServer::GroundFile Add-Ons/Ground_Bedroom/zinc03.ground
