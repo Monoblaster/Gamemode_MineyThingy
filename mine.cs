@@ -51,6 +51,7 @@ function Mine::OnAdd(%mine)
 			isPlanted = true;
 			isBasePlate = true;
 			isBarrier = true;
+			colorid = 16;
 		};
 		%mine.bricks.add(%brick);
 		%group.add(%brick);
@@ -75,6 +76,7 @@ function Mine::OnAdd(%mine)
 			isPlanted = true;
 			isBasePlate = true;
 			isBarrier = true;
+			colorid = 16;
 		};
 		%mine.bricks.add(%brick);
 		%group.add(%brick);
@@ -118,6 +120,7 @@ function Mine::OnAdd(%mine)
 			isPlanted = true;
 			isBasePlate = true;
 			isBarrier = true;
+			colorid = 16;
 		};
 		%mine.bricks.add(%brick);
 		%group.add(%brick);
@@ -173,14 +176,6 @@ function Mine::RandomBlobs(%mine,%material,%count,%volume,%percent)
 	%c = 0;
 	while(%c < %count)
 	{
-		if(%safety++ > %count * 10)
-		{
-			backtrace();
-			echo("SAFETY BROKEN");
-			talk("SAFETY BROKEN");
-			break;
-		}
-
 		%position = getRandom(0,%width) SPC getRandom(0,%width) SPC getRandom(0,%height);
 		if(%mine.positionBlob[%position] !$= "")
 		{
@@ -236,9 +231,9 @@ function Mine::Reveal(%mine,%pos)
 	}
 	%type = %mine.material;
 
-	ptimer_start("time");
+
 	%blobs = $mine.octree.searchPoint(%x,%y,%z);
-	ptimer_end("time");echo(ptimer_duration_usec("time"));
+
 
 	if(%blobs $= "") // no blobs so we noisey
 	{
@@ -260,7 +255,7 @@ function Mine::Reveal(%mine,%pos)
 	}
 	else //see what we get from our in range blobs
 	{
-		%count = getWordCount(%blobs);
+		%count = getWordCount(%blobs);//would be nice if we could just remove a blob from the octree after it has run out of things but alas we cannot right now
 		for(%i = 0; %i < %count; %i++)
 		{
 			%currBlob = getWord(%blobs,%i);
@@ -271,18 +266,13 @@ function Mine::Reveal(%mine,%pos)
 
 			if(!%mine.BlobVolumeRemaining[%currBlob] || getRandom() > %mine.BlobRemaining[%currBlob] / %mine.BlobVolumeRemaining[%currBlob])
 			{
-				if(%mine.BlobVolumeRemaining[%currBlob]-- == 0)
-				{
-					//deactivate blob
-				}
+				%mine.BlobVolumeRemaining[%currBlob]--;
 				continue;
 			}
 
 			%type = firstWord(%mine.BlobInfo[%currBlob]);
-			if(%mine.BlobRemaining[%currBlob]-- == 0 || %mine.BlobVolumeRemaining[%currBlob]-- == 0)
-			{
-				//deactivate blob
-			}
+			%mine.BlobRemaining[%currBlob]--;
+			%mine.BlobVolumeRemaining[%currBlob]--;
 			break;
 		}
 
@@ -294,10 +284,7 @@ function Mine::Reveal(%mine,%pos)
 				continue;
 			}
 
-			if(%mine.BlobVolumeRemaining[%currBlob]-- == 0)
-			{
-				//deactivate blob
-			}
+			%mine.BlobVolumeRemaining[%currBlob]--;
 		}
 	}
 

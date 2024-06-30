@@ -15,6 +15,11 @@ function Octree_Create(%size,%corner)
 	};
 }
 
+function Octree::OnAdd(%tree)
+{
+	%tree.itemCount = 0;
+}
+
 function Octree::OnRemove(%tree)
 {
 	for(%i = 0; %i < 8; %i++)
@@ -71,44 +76,44 @@ function Octree::Insert(%tree,%a,%corner,%size)
 	}
 
 	//we have reached max depth or no the item doesn't fit inside of any of our children
-	%tree.items = lTrim(%tree.Items TAB %corner SPC %size SPC %a);
+	%tree.itemXA[%tree.itemCount] = getWord(%corner,0);
+	%tree.itemYA[%tree.itemCount] = getWord(%corner,1);
+	%tree.itemZA[%tree.itemCount] = getWord(%corner,2);
+	%tree.itemXB[%tree.itemCount] = getWord(%corner,0) + %size;
+	%tree.itemYB[%tree.itemCount] = getWord(%corner,1) + %size;
+	%tree.itemZB[%tree.itemCount] = getWord(%corner,2) + %size;
+	%tree.itemThing[%tree.itemCount] = %a;
+	%tree.itemCount++;
 }
 
 //will return all things that contain this point
-function Octree::SearchPoint(%tree,%x,%y,%z)
+function Octree::SearchPoint(%nextChild,%x,%y,%z)
 {
-	for(%i = 0; %i < 8; %i++)
+	%pos = %x SPC %y SPC %z;
+	while(%nextChild !$= "")
 	{
-		//does the child exist?
-		if(!isObject(%tree.child[%i]))
-		{
-			continue;
-		}
-		
-		%child = %tree.child[%i];
-		//does it contain this point?
-		if(!Octree_ContainsPoint(%child.cornerx,%child.cornery,%child.cornerz,%child.size,%x,%y,%z))
-		{
-			continue;
-		}
+		%currTree = %nextChild;
+		%nextChild = "";
 
-		//child contains point
-		%list = %child.searchPoint(%x,%y,%z);
-		break;
-	}
-
-	//find things that contain the point
-	%things = %tree.items;
-	%count = getFieldCount(%things);
-	for(%i = 0; %i < %count; %i++)
-	{
-		%item = getField(%things,%i);
-		if(!Octree_ContainsPoint(getWord(%item,0),getWord(%item,1),getWord(%item,2),getWord(%item,3),%x,%y,%z))
+		%count = %currTree.ItemCount;
+		for(%i = 0; %i < %count; %i++)
 		{
-			continue;
+			if(%x >= %currtree.itemXA[%i] && %y >= %currtree.itemYA[%i] && %z >= %currtree.itemZA[%i] && %x < %currtree.itemXB[%i] && %y < %currtree.itemYB[%i] && %z < %currtree.itemZB[%i])
+			{
+				%list = %list SPC %currtree.itemThing[%i];
+			}
 		}
 
-		%list = %list SPC getWord(%item,4);
+		for(%i = 0; %i < 8; %i++)
+		{
+			%child = %currTree.child[%i];
+			//does the child exist?
+			if(%child !$= "" && %x >= %child.CornerX && %y >= %child.CornerY && %z >= %child.CornerZ && %x < %child.CornerX + %child.size && %y < %child.CornerY + %child.size && %z < %child.CornerZ + %child.size)
+			{
+				%nextChild = %child;
+				break;
+			}
+		}
 	}
 
 	return lTrim(%list);

@@ -78,4 +78,7 @@ function PerlinNoise::Sample(%obj,%x,%y,%z)
 				PerlinNoise_Gradient(%obj.p[%obj.p[%obj.p[%xi+1]+ %yi+1]+ %zi+1], %x-1, %y-1, %z-1), %u),
 				%v),
 	%w) + 1) / 2;
+
+
+	
 }
