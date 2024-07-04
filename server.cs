@@ -1,5 +1,4 @@
 exec("./inventoryutil.cs");
-exec("./inventoryui.cs");
 exec("./mininginventory.cs");
 exec("./perlinNoise.cs");
 exec("./octree.cs");
@@ -31,37 +30,42 @@ datablock fxDTSBrickData(brickMineCubeData)
 //TODO: this is tempory mining
 package Mining
 {
-	function fxDTSBrick::onActivate(%brick)
+	function Armor::onTrigger(%db, %obj, %num, %down)
 	{
-		if(%brick.isMineable && %brick.material.name !$= "Rock")
+		if(%obj.currtool < 0 && %num == 0 && %down)
 		{
-			%pos = $mine.To(%brick.getPosition());
-			$mine.reveal(vectorAdd(%pos,"0 0 1"));
-			$mine.reveal(vectorAdd(%pos,"0 0 -1"));
-			$mine.reveal(vectorAdd(%pos,"1 0 0"));
-			$mine.reveal(vectorAdd(%pos,"-1 0 0"));
-			$mine.reveal(vectorAdd(%pos,"0 1 0"));
-			$mine.reveal(vectorAdd(%pos,"0 -1 0"));
-			if(isObject(%brick.material.getName() @ "Item"))
+			%start = %obj.getEyePoint();
+			%brick = ContainerRayCast(%start, VectorAdd(VectorScale(%obj.getEyeVector(),6),%Start), $TypeMasks::FxBrickObjectType);
+			if(%brick.isMineable && %brick.material.name !$= "Rock")
 			{
-				%item = new Item()
+				%pos = $mine.To(%brick.getPosition());
+				$mine.reveal(vectorAdd(%pos,"0 0 1"));
+				$mine.reveal(vectorAdd(%pos,"0 0 -1"));
+				$mine.reveal(vectorAdd(%pos,"1 0 0"));
+				$mine.reveal(vectorAdd(%pos,"-1 0 0"));
+				$mine.reveal(vectorAdd(%pos,"0 1 0"));
+				$mine.reveal(vectorAdd(%pos,"0 -1 0"));
+				if(isObject(%brick.material.getName() @ "Item"))
 				{
-					dataBlock = %brick.material.getName() @ "Item";
-					position = %brick.getTransform();
-				};
-				%item.setVelocity(vectorNormalize(getRandom() - 0.5 SPC getRandom() - 0.5 SPC getRandom() - 0.5));
-				%item.schedulePop();
+					%item = new Item()
+					{
+						dataBlock = %brick.material.getName() @ "Item";
+						position = %brick.getTransform();
+					};
+					%item.setVelocity(vectorNormalize(getRandom() - 0.5 SPC getRandom() - 0.5 SPC getRandom() - 0.5));
+					%item.schedulePop();
+				}
+				else
+				{
+					%obj.client.placableInventoryDirt++;
+				}
+
+				%brick.delete();
+				return;
 			}
-			else
-			{
-				//TODO: dirt probably add this to the player so they can build with it
-			}
-			
-			%brick.delete();
-			return;
 		}
 		
-		parent::onActivate(%brick);
+		parent::onTrigger(%db, %obj, %num, %down);
 	}
 };
 activatePackage("Mining");
@@ -220,9 +224,9 @@ function Armor::onCollision (%this, %obj, %col, %vec, %speed)
 	}
 }
 
-Material_Define("Dirt",8,2);
-Material_Define("Rock",7,2);
-Material_Define("Iron",4,2,true);
+Material_Define("Dirt",8,"TTdirt01");
+Material_Define("Rock",7,"rockface");
+Material_Define("Iron",4,"brickTOP",true); // temporary texture
 
 function test()
 {
@@ -234,9 +238,41 @@ function test()
 
 	// Mine_RevealAll($mine);
 
-	$mine.Air("6 6 6",2,2);
-	$mine.RevealArea("5 5 5",4,4);
-	ClientGroup.getObject(0).player.settransform($mine.From("7 7 6"));
+	explode();
+	ClientGroup.getObject(0).setMaxTools(7);
+	ClientGroup.getObject(0).player.clearTools();
+	ClientGroup.getObject(0).player.settransform($mine.From("9 9 8"));
+	ClientGroup.getObject(0).InventoryStack.push(Inventory("Base"));
+}
+
+function explode()
+{
+	%radius = 10;
+	%pos = vectorSub("15 15 15",%radius SPC %radius SPC %radius);
+	// pTimer_start("time");
+	// $mine.Airsphere(%pos,%radius);
+	// pTimer_end("time");talk(ptimer_duration("time"));
+	pTimer_start("time");
+	$mine.Revealsphere(vectorSub(%pos,"1 1 1"),%radius + 1);
+	pTimer_end("time");talk(ptimer_duration("time"));
+}
+
+function serverCmdCanColor(%client)
+{
+	%client.chatMessage(%client.player.getMountedImage(0).projectile.colorid);
+}
+
+function serverCmdPrintName(%client)
+{
+	%player = %client.player;
+	%start = %player.getEyePoint();
+	%brick = containerRayCast(%start, vectorAdd(vectorScale(%player.getEyeVector(),100),%start), $TypeMasks::FxBrickObjectType);
+	if(%brick.getDatablock().hasPrint)
+	{
+		%file = getPrintTexture(%brick.printId);
+		%client.chatMessage(getSubStr(%file,14,striPos(%file,"_",14) - 14) @ "/" @ filebase(%file));  // 14 being the length of Add-Ons/Print_
+	}
+	
 }
 
 //assets

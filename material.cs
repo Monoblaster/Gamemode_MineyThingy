@@ -3,19 +3,22 @@ if(!isObject($Material::Set))
 	$Material::Set = new SimSet();
 }
 
-function Material_Define(%name,%colorid,%printid,%drop)
+function Material_Define(%name,%colorid,%printName,%drop)
 {
 	if(isObject(%name @ "Material"))
 	{
 		(%name @ "Material").delete();
 	}
 
+	%printName = "ModTer/" @ %printName;
+
 	new ScriptObject(%name @ "Material")
 	{
 		class = "Material";
 		name = %name;
 		colorId = %colorId;
-		printId = %printId;
+		printName = %printName;
+		printId = $printNameTable[%printName];
 		drop = %drop;
 	};
 

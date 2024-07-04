@@ -293,10 +293,30 @@ function Mine::Reveal(%mine,%pos)
 		return;
 	}
 
+	%angleId = getRandom(0,3);
+	%transform = vectorAdd(vectorAdd(%mine.point,"1 1 1"),vectorScale(%x SPC %y SPC %z,2));
+	if (%angleId == 0)
+	{
+		%transform = %transform SPC " 1 0 0 0";
+	}
+	else if (%angleId == 1)
+	{
+		%transform = %transform SPC " 0 0 1" SPC $piOver2;
+	}
+	else if (%angleId == 2)
+	{
+		%transform = %transform SPC " 0 0 1" SPC $pi;
+	}
+	else if (%angleId == 3)
+	{
+		%transform = %transform SPC " 0 0 -1" SPC $piOver2;
+	}
+
+
 	%brick = new fxDTSBrick()
 	{
 		dataBlock = "brickMineCubeData";
-		position = vectorAdd(vectorAdd(%mine.point,"1 1 1"),vectorScale(%x SPC %y SPC %z,2));
+		position = %transform;
 		angleId = getRandom(0,3);
 		isPlanted = true;
 		isBasePlate = true;
@@ -305,6 +325,7 @@ function Mine::Reveal(%mine,%pos)
 		colorId = %type.colorId;
 		material = %type;
 	};
+	%brick.setTransform(%transform);
 	%mine.bricks.add(%brick);
 	BrickGroup_888888.add(%brick);
 	%plantError = %brick.plant();
@@ -318,7 +339,8 @@ function Mine::Reveal(%mine,%pos)
 	%brick.setTrusted(1);
 }
 
-function Mine::Air(%mine,%point,%width,%height)
+//TODO: make a cache of these values so i can reuse them later for faster execution
+function Mine::AirCube(%mine,%point,%width,%height)
 {
 	%point = mFloor(getWord(%point,0)) SPC mFloor(getWord(%point,1)) SPC mFloor(getWord(%point,2));
 
@@ -335,7 +357,7 @@ function Mine::Air(%mine,%point,%width,%height)
 	}
 }
 
-function Mine::RevealArea(%mine,%point,%width,%height)
+function Mine::RevealCube(%mine,%point,%width,%height)
 {
 	%point = mFloor(getWord(%point,0)) SPC mFloor(getWord(%point,1)) SPC mFloor(getWord(%point,2));
 
@@ -343,9 +365,60 @@ function Mine::RevealArea(%mine,%point,%width,%height)
 	for(%i = 0; %i < %count; %i++)
 	{
 		%mine.reveal(vectorAdd((%i % %width) SPC (mFloor(%i / %width) % %width) SPC mFloor(%i / (%width * %width)), %point));
+	}
+}
+
+function Mine::AirSphere(%mine,%point,%radius)
+{
+	%point = mFloor(getWord(%point,0)) SPC mFloor(getWord(%point,1)) SPC mFloor(getWord(%point,2));
+	%center = vectorAdd(%point,%radius SPC %radius SPC %radius);
+	%diameter = %radius * 2 + 1;
+
+	%count = %diameter * %diameter * %diameter;
+	for(%i = 0; %i < %count; %i++)
+	{
+		%pos = vectorAdd((%i % %diameter) SPC  (mFloor(%i / %diameter) % %diameter) SPC mFloor(%i / (%diameter * %diameter)),%point);
+		if(vectorDist(%pos,%center) > %radius)
+		{
+			continue;
+		}
+
+		if(isObject(%mine.mineBrick[%pos]))
+		{
+			%mine.mineBrick[%pos].delete();
+			continue;
+		}
+
 		%mine.mineBrick[%pos] = true;
 	}
 }
+
+function Mine::RevealSphere(%mine,%point,%radius)
+{
+	%point = mFloor(getWord(%point,0)) SPC mFloor(getWord(%point,1)) SPC mFloor(getWord(%point,2));
+	%x = getWord(%point,0);
+	%y = getWord(%point,1);
+	%z = getWord(%point,2);
+	%center = vectorAdd(%point,%radius SPC %radius SPC %radius);
+	%xC = getWord(%center,0);
+	%yC = getWord(%center,1);
+	%zC = getWord(%center,2);
+	%diameter = %radius * 2 + 1;
+
+	%count = %diameter * %diameter * %diameter;
+	for(%i = 0; %i < %count; %i++)
+	{
+		%newX = (%i % %diameter) + %x;
+		%newY = (mFloor(%i / %diameter) % %diameter) + %y;
+		%newZ =  mFloor(%i / (%diameter * %diameter)) + %z;
+		if(%mine.mineBrick[%newX SPC %newY SPC %newZ] !$= "" || (%xC - %newX) * (%xC - %newX) + (%yC - %newY) * (%yC - %newY) + (%zC - %newZ) * (%zC - %newZ) > %radius * %radius)
+		{
+			continue;
+		}
+		%mine.reveal(%newX SPC %newY SPC %newZ);
+	}
+}
+
 
 // this is for debugging only lol
 function Mine_RevealAll(%mine)

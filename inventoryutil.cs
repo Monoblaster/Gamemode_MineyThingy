@@ -1,10 +1,29 @@
-function Inventory_Create()
+// INVENTORY
+if(!isObject($InventoryUI::Set))
 {
-	return new scriptObject()
+	$inventoryUI::Set = new SimSet();
+}
+
+function Inventory(%name)
+{
+	if(isObject(%name SPC "Inventory"))
+	{
+		return (%name SPC "Inventory").getId();
+	}
+
+	return new ScriptObject(%name SPC "Inventory")
 	{
 		class = "Inventory";
+		name = %name;
 	};
 }
+
+function Inventory::OnAdd(%obj)
+{
+	$inventoryUI::Set.add(%obj);
+}
+
+$Inventory::Empty = Inventory("Empty");
 
 function Inventory::Set(%inv,%slot,%db)
 {
@@ -42,6 +61,212 @@ function Inventory::Display(%inv,%client,%writeBlank,%offset)
 	}
 }
 
+// INVENTORY STACK
+function InventoryStack::Push(%stack,%inv)
+{
+	%stack.active = %inv;
+	if(!%inv.dontAutoOpen)
+	{
+		commandToClient(%stack.client,'SetActiveTool',0);
+	}
+	%stack.set.add(%inv);
+	%stack.set.bringToFront(%inv);
+	call(%inv.push,%stack);
+	%stack.display();	
+}
+
+function InventoryStack::Pop(%stack)
+{
+	%first = %stack.set.getObject(0);
+	%stack.set.pushToBack(%first);
+	%stack.set.remove(%first);
+	%stack.active = "";
+	if(%stack.set.getCount() > 0)
+	{
+		%stack.active = %stack.set.getObject(0);
+	}
+
+	if(!%stack.active.dontAutoOpen)
+	{
+		commandToClient(%stack.client,'SetActiveTool',0);
+	}
+	%stack.display();
+	call(%inv.pop,%stack);
+}
+
+function InventoryStack::Clear(%stack)
+{
+	%stack.active = "";
+	%stack.set.delete();
+	%stack.set = new SimSet();
+}
+
+function InventoryStack::Peek(%stack,%n)
+{
+	return %stack.set.GetObject(%n + 0);
+}
+
+function InventoryStack::Print(%stack)
+{
+	%curr = %stack.active;
+	%slot = %stack.client.currtool;
+	if(%curr $= "")
+	{
+		return;
+	}
+
+	if(!%curr.cantClose)
+	{
+		%controls = "Close to cancel";
+	}
+
+	if(%slot != -1 && isObject(%curr.tool[%slot]) || !%curr.dontOverwrite)
+	{
+		%controls = "\c4Click to use" NL %controls;
+	}
+	%stack.client.centerPrint(trim(call(%curr.select,%stack,%slot) NL %controls));
+}
+
+function InventoryStack::Display(%stack)
+{
+	%client = %stack.client;
+	%player = %client.player;
+	%client.centerPrint("");
+	%curr = %stack.active;
+
+	if(%curr $= "")
+	{
+		if(isObject(%player))
+		{
+			Inventory::Display(%player,%client,true);
+			return;
+		}
+		Inventory::Display($Inventory::Empty,%client,true);
+		return;
+	}
+
+	if(isFunction(%curr.display))
+	{
+		call(%curr.display,%stack,%client.currTool);
+		return;
+	}
+	
+	if(%curr.canUseTools && isObject(%player))
+	{
+		serverCmdUseTool(%client,%player.currTool);
+	}
+	else
+	{
+		%player.currTool = -1;
+		%player.unmountImage(0);
+		%player.playThread (1, root);
+	}
+
+	%curr.display(%client,!%curr.dontOverwrite);
+}
+
+package InventoryStack
+{
+	function GameConnection::onClientEnterGame(%client)
+	{
+		%obj = new ScriptObject()
+		{
+			class = "InventoryStack";
+			client = %client;
+			active = "";
+		};
+		%obj.set = new SimSet();
+		%client.InventoryStack = %obj;
+		return parent::onClientEnterGame(%client);
+	}
+
+	function GameConnection::onDrop(%client, %reason)
+	{
+		%client.InventoryStack.set.delete();
+		%client.InventoryStack.delete();
+		return parent::onDrop(%client,%reason);
+	}
+
+	function serverCmdUnUseTool(%client)
+	{
+		if(%client.InventoryStack.active !$= "")
+		{
+			%client.centerPrint("");
+			if(!%client.InventoryStack.active.cantClose)
+			{
+				%client.InventoryStack.pop();
+			}
+		}
+		
+		return Parent::serverCmdUnUseTool(%client);
+	}
+
+	function serverCmdUseTool(%client,%slot)
+	{
+		%curr = %client.InventoryStack.active;
+		if(%curr !$= "")
+		{
+			if(!%curr.cantClose)
+			{
+				%controls = "Close to cancel";
+			}
+
+			if(%slot != -1 && isObject(%curr.tool[%slot]) || !%curr.dontOverwrite)
+			{
+				%client.currTool = %slot;
+				%client.player.currTool = %slot;
+				%controls = "\c4Click to use" NL %controls;
+				%slot = -1;
+			}
+			%client.centerPrint(trim(call(%curr.select,%client.InventoryStack,%client.currTool) NL %controls));
+
+			%player = %client.player;
+			if(%slot == -1 && isobject(%player))
+			{
+				%player.unmountImage(0);
+				fixArmReady(%player);
+			}
+
+			if(!%curr.canUseTools)
+			{
+				return;
+			}
+		}
+
+		return parent::serverCmdUseTool(%client,%slot);
+	}
+
+	function Observer::onTrigger(%db, %obj, %num, %down)
+	{
+		%client = %obj.getControllingClient();
+		if(isObject(%client) && %num == 0 && %down)
+		{
+			if(%client.currTool >= 0 && %client.InventoryStack.active !$= "")
+			{
+				call(%client.InventoryStack.active.use,%client.InventoryStack,%client.currTool);
+				return;
+			}
+		}
+		return Parent::onTrigger(%db, %obj, %num, %down);
+	}
+
+	function Armor::onTrigger(%db, %obj, %num, %down) 
+	{
+		%client = %obj.getControllingClient();
+		if(isObject(%client) && %num == 0 && %down)
+		{
+			if(%client.currTool >= 0 && %client.InventoryStack.active !$= "")
+			{
+				call(%client.InventoryStack.active.use,%client.InventoryStack,%client.currTool);
+				return;
+			}
+		}
+		return Parent::onTrigger(%db, %obj, %num, %down);
+	}
+};
+activatepackage("InventoryStack");
+
+// MAX TOOLS
 function GameConnection::setMaxTools(%c,%n)
 {
 	if (%numSlots < 0 || %numSlots > 30)
@@ -216,120 +441,16 @@ function ItemData::onPickup (%this, %obj, %user, %amount)
 		%player.tool[%freeslot] = %this;
 		if (%user.client)
 		{
-			messageClient (%user.client, 'MsgItemPickup', '', %freeslot, %this.getId ());
+			if(%user.client.InventoryStack.active $= "" || %user.client.InventoryStack.active.showNewItems)
+			{
+				messageClient (%user.client, 'MsgItemPickup', '', %freeslot, %this.getId ());
+			}
+			else
+			{
+				messageClient (%user.client, 'MsgItemPickup', '', -1, ""); // to play the pickup sound lol
+			}
 		}
 		return 1;
-	}
-}
-
-function Weapon::onPickup (%this, %obj, %shape, %amount)
-{
-	ItemData::onPickup (%this, %obj, %shape, %amount);
-	return;
-	if (%obj.canPickup == 0)
-	{
-		return;
-	}
-	%player = %shape;
-	%client = %player.client;
-	%data = %player.getDataBlock ();
-	if (!isObject (%client))
-	{
-		return;
-	}
-	%mg = %client.miniGame;
-	if (isObject (%mg))
-	{
-		if (%mg.WeaponDamage == 1)
-		{
-			if (getSimTime () - %client.lastF8Time < 5000)
-			{
-				return;
-			}
-		}
-	}
-	%canUse = 1;
-	if (miniGameCanUse (%player, %obj) == 1)
-	{
-		%canUse = 1;
-	}
-	if (miniGameCanUse (%player, %obj) == 0)
-	{
-		%canUse = 0;
-	}
-	if (!%canUse)
-	{
-		if (isObject (%obj.spawnBrick))
-		{
-			%ownerName = %obj.spawnBrick.getGroup ().name;
-		}
-		%msg = %ownerName @ " does not trust you enough to use this item.";
-		if ($lastError == $LastError::Trust)
-		{
-			%msg = %ownerName @ " does not trust you enough to use this item.";
-		}
-		else if ($lastError == $LastError::MiniGameDifferent)
-		{
-			if (isObject (%client.miniGame))
-			{
-				%msg = "This item is not part of the mini-game.";
-			}
-			else 
-			{
-				%msg = "This item is part of a mini-game.";
-			}
-		}
-		else if ($lastError == $LastError::MiniGameNotYours)
-		{
-			%msg = "You do not own this item.";
-		}
-		else if ($lastError == $LastError::NotInMiniGame)
-		{
-			%msg = "This item is not part of the mini-game.";
-		}
-		commandToClient (%client, 'CenterPrint', %msg, 1);
-		return;
-	}
-	if (%player.weaponCount < %data.maxWeapons)
-	{
-		%freeslot = -1;
-		%i = 0;
-		%maxTools = %client.getMaxTools();
-		while (%i < %maxTools)
-		{
-			if (%player.tool[%i] == 0)
-			{
-				%freeslot = %i;
-				break;
-			}
-			%i += 1;
-		}
-		if (%freeslot == -1)
-		{
-			
-		}
-		else 
-		{
-			if (%obj.isStatic ())
-			{
-				%obj.Respawn ();
-			}
-			else 
-			{
-				%obj.delete ();
-			}
-			%player.weaponCount += 1;
-			%player.tool[%freeslot] = %this;
-			if (%player.client)
-			{
-				messageClient (%player.client, 'MsgItemPickup', '', %freeslot, %this.getId ());
-			}
-			return 1;
-		}
-	}
-	else if (%user.client)
-	{
-		messageClient (%user.client, 'MsgItemFailPickup', 'You already have a weapon!');
 	}
 }
 
@@ -349,15 +470,15 @@ function Armor::onCollision (%this, %obj, %col, %vec, %speed)
 		%client = %obj.client;
 		%colData = %col.getDataBlock ();
 		%maxTools = %client.getMaxTools();
-		%i = 0;
-		while (%i < %maxTools )
-		{
-			if (%obj.tool[%i] == %colData)
-			{
-				return;
-			}
-			%i += 1;
-		}
+		// %i = 0; //TODO: TOgGLE THIS
+		// while (%i < %maxTools )
+		// {
+		// 	if (%obj.tool[%i] == %colData)
+		// 	{
+		// 		return;
+		// 	}
+		// 	%i += 1;
+		// }
 		%obj.pickup (%col);
 	}
 	else if (%colClassName $= "Player" || %colClassName $= "AIPlayer")
