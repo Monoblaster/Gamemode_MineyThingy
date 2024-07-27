@@ -30,19 +30,6 @@ function PerlinNoise::OnAdd(%obj)
 	}
 }
 
-function PerlinNoise_Gradient(%hash,%x,%y,%z)
-{
-	%hash = %hash & 15;
-	%u = %hash < 8 ? %x : %y;
-	%v = %hash < 4 ? %y : (%hash == 12 || %hash == 14 ? %x : %z);
-	return ((%hash & 1) == 0 ? %u : -%u) + ((%hash & 2) == 0 ? %v : -%v);
-}
-
-function PerlinNoise_Lerp(%a,%b,%x)
-{
-	return %a + %x * (%b - %a);
-}
-
 function PerlinNoise::Sample(%obj,%x,%y,%z)
 {
 	%xi = %x & 255; //x y and z index of the cube
@@ -53,32 +40,30 @@ function PerlinNoise::Sample(%obj,%x,%y,%z)
 	%y -= mFloor(%y);
 	%z -= mFloor(%z);
 
-	%u = %x * %x * %x * (%x * (%x * 6 - 15) + 10); //x y and z put through a smoothing function
-	%v = %y * %y * %y * (%y * (%y * 6 - 15) + 10);
-	%w = %z  * %z * %z * (%z * (%z * 6 - 15) + 10);
+	%hasha = %obj.p[%obj.p[%obj.p[%xi]+ %yi]+ %zi] & 15;
+	%hashb = %obj.p[%obj.p[%obj.p[%xi]+ %yi+1]+ %zi] & 15;
+	%hashc = %obj.p[%obj.p[%obj.p[%xi]+ %yi]+ %zi+1] & 15;
+	%hashd = %obj.p[%obj.p[%obj.p[%xi]+ %yi+1]+ %zi+1] & 15;
+	%hashe = %obj.p[%obj.p[%obj.p[%xi+1]+ %yi]+ %zi] & 15;
+	%hashf = %obj.p[%obj.p[%obj.p[%xi+1]+ %yi+1]+ %zi] & 15;
+	%hashg = %obj.p[%obj.p[%obj.p[%xi+1]+ %yi]+ %zi+1] & 15;
+	%hashh = %obj.p[%obj.p[%obj.p[%xi+1]+ %yi+1]+ %zi+1] & 15;
 
-	return //TODO: this should probably be unwrapped for the sake of perfomance but that sounds painful!!!
-	(PerlinNoise_Lerp(
-		PerlinNoise_Lerp(
-			PerlinNoise_Lerp(
-				PerlinNoise_Gradient(%obj.p[%obj.p[%obj.p[%xi]+ %yi]+ %zi], %x, %y, %z),
-				PerlinNoise_Gradient(%obj.p[%obj.p[%obj.p[%xi]+ %yi+1]+ %zi], %x-1, %y, %z),
-				%u),
-			PerlinNoise_Lerp(
-				PerlinNoise_Gradient(%obj.p[%obj.p[%obj.p[%xi]+ %yi]+ %zi+1], %x, %y-1, %z),
-				PerlinNoise_Gradient(%obj.p[%obj.p[%obj.p[%xi]+ %yi+1]+ %zi+1], %x-1, %y-1, %z), %u),
-				%v),
-		PerlinNoise_Lerp(
-			PerlinNoise_Lerp(
-				PerlinNoise_Gradient(%obj.p[%obj.p[%obj.p[%xi+1]+ %yi]+ %zi], %x, %y, %z-1),
-				PerlinNoise_Gradient(%obj.p[%obj.p[%obj.p[%xi+1]+ %yi+1]+ %zi], %x-1, %y, %z-1),
-				%u),
-			PerlinNoise_Lerp(
-				PerlinNoise_Gradient(%obj.p[%obj.p[%obj.p[%xi+1]+ %yi]+ %zi+1], %x, %y-1, %z-1),
-				PerlinNoise_Gradient(%obj.p[%obj.p[%obj.p[%xi+1]+ %yi+1]+ %zi+1], %x-1, %y-1, %z-1), %u),
-				%v),
-	%w) + 1) / 2;
+	%a = ((%hasha & 1) == 0 ? 1 : -1) * (%hasha < 8 ? %x : %y) + ((%hasha & 2) == 0 ? 1 : -1) * (%hasha < 4 ? %y : (%hasha == 12 || %hasha == 14 ? %x : %z)) + (%x * %x * %x * (%x * (%x * 6 - 15) + 10)) *
+		(((%hashb & 1) == 0 ? 1 : -1) * (%hashb < 8 ? %x-1 : %y) + ((%hashb & 2) == 0 ? 1 : -1) * (%hashb < 4 ? %y : (%hashb == 12 || %hashb == 14 ? %x-1 : %z)) + 
+		((%hasha & 1) == 0 ? 1 : -1) * (%hasha < 8 ? %x : %y) + ((%hasha & 2) == 0 ? 1 : -1) * (%hasha < 4 ? %y : (%hasha == 12 || %hasha == 14 ? %x : %z)));
 
-
+	%b = ((%hashc & 1) == 0 ? 1 : -1) * (%hashc < 8 ? %x : %y-1) + ((%hashc & 2) == 0 ? 1 : -1) * (%hashc < 4 ? %y-1 : (%hashc == 12 || %hashc == 14 ? %x : %z)) + (%x * %x * %x * (%x * (%x * 6 - 15) + 10)) *
+		(((%hashd & 1) == 0 ? 1 : -1) * (%hashd < 8 ? %x-1 : %y-1) + ((%hashd & 2) == 0 ? 1 : -1) * (%hashd < 4 ? %y-1 : (%hashd == 12 || %hashd == 14 ? %x-1 : %z)) + 
+		((%hashc & 1) == 0 ? 1 : -1) * (%hashc < 8 ? %x : %y-1) + ((%hashc & 2) == 0 ? 1 : -1) * (%hashc < 4 ? %y-1 : (%hashc == 12 || %hashc == 14 ? %x : %z)));
 	
+	%c = ((%hashe & 1) == 0 ? 1 : -1) * (%hashe < 8 ? %x : %y) + ((%hashe & 2) == 0 ? 1 : -1) * (%hashe < 4 ? %y : (%hashe == 12 || %hashe == 14 ? %x : %z-1)) + (%x * %x * %x * (%x * (%x * 6 - 15) + 10)) *
+		(((%hashf & 1) == 0 ? 1 : -1) * (%hashf < 8 ? %x-1 : %y) + ((%hashf & 2) == 0 ? 1 : -1) * (%hashf < 4 ? %y : (%hashf == 12 || %hashf == 14 ? %x-1 : %z-1)) + 
+		((%hashe & 1) == 0 ? 1 : -1) * (%hashe < 8 ? %x : %y) + ((%hashe & 2) == 0 ? 1 : -1) * (%hashe < 4 ? %y : (%hashe == 12 || %hashe == 14 ? %x : %z-1)));
+	
+	%d = ((%hashg & 1) == 0 ? 1 : -1) * (%hashg < 8 ? %x : %y-1) + ((%hashg & 2) == 0 ? 1 : -1) * (%hashg < 4 ? %y-1 : (%hashg == 12 || %hashg == 14 ? %x : %z-1)) + (%x * %x * %x * (%x * (%x * 6 - 15) + 10)) *
+		(((%hashh & 1) == 0 ? 1 : -1) * (%hashh < 8 ? %x-1 : %y-1) + ((%hashh & 2) == 0 ? 1 : -1) * (%hashh < 4 ? %y-1 : (%hashh == 12 || %hashh == 14 ? %x-1 : %z-1)) + 
+		((%hashg & 1) == 0 ? 1 : -1) * (%hashg < 8 ? %x : %y-1) + ((%hashg & 2) == 0 ? 1 : -1) * (%hashg < 4 ? %y-1 : (%hasha == 12 || %hashg == 14 ? %x : %z-1)));
+
+	return (%a + (%y * %y * %y * (%y * (%y * 6 - 15) + 10)) * (%b - %a) + (%z  * %z * %z * (%z * (%z * 6 - 15) + 10)) * (%c + (%y * %y * %y * (%y * (%y * 6 - 15) + 10)) * (%c - %d) - %a + (%y * %y * %y * (%y * (%y * 6 - 15) + 10)) * (%b - %a)) + 1) / 2; // i hope this is faster lol
 }

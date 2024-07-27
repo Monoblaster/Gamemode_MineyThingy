@@ -1,4 +1,3 @@
-//TODO: cave ins
 //mines are boxes where sides are barriers that cannot be mined through
 //when a box is mined the boxes around it are revealed
 //the closer the player mines up to 100% before the top the more likely that column collapses
@@ -23,6 +22,242 @@ function Mine_Create(%bottomCorner,%width,%height,%material)
 	};
 }
 
+//gives us a script object we can add positions to
+//we can then add this list of positions to one of the queues
+function Mine::Queue(%mine,%callback)
+{
+	return new ScriptObject("MineQueue")
+	{
+		index = 0;
+		count = 0;
+		callback = %callback;
+		mine = %mine;
+	};
+}
+
+function MineQueue::Reveal(%queue,%air)
+{
+	%queue.air = %air;
+	%queue.mine.revealQueue.add(%queue);
+}
+
+//reveals and deletes positions in the order they were added
+//created bricks are made as dust which will be revealed later
+//this function is a little spaghetti but that's ok :)
+function Mine_RevealQueue(%mine,%lastStartTime)
+{
+	if(%mine.revealQueue.getCount() == 0) // sleep until something happens
+	{
+		Schedule(33,%mine,"Mine_RevealQueue",%mine,getSimTime());
+		return;
+	}
+
+	%thisStartTime = getSimTime();
+	%delta = %thisStartTime - %lastStartTime - 33;
+	
+	%queue = %mine.revealQueue.getObject(0);
+
+	%type = DustMaterial;
+
+	if(%queue.air)
+	{
+		%noise = %mine.noise;
+		%offset = getWord(%mine.lodeInfo[0],1) + 0.1; 
+		%scale = getWord(%mine.lodeInfo[0],2);
+		%threshold = getWord(%mine.lodeInfo[0],3);
+	}
+
+	%count = getMin(%queue.count,%queue.index + (1 - %delta / 25) * 100);
+	for(%i = %queue.index; %i < %count; %i++)
+	{
+		if(%queue.air)
+		{
+			if(%noise.Sample((getWord(%queue.pos[%i],0) + %offset) * %scale, (getWord(%queue.pos[%i],1) + %offset) * %scale, (getWord(%queue.pos[%i],2) + %offset) * %scale) < %threshold)
+			{
+				if(isObject(%mine.mineBrick[%queue.pos[%i]]))
+				{
+					%mine.mineBrick[%queue.pos[%i]].delete();
+					continue;
+				}
+				%mine.mineBrick[%queue.pos[%i]] = true;
+				continue;
+			}
+
+			%type = GravelMaterial;
+			if(isObject(%mine.mineBrick[%queue.pos[%i]]))
+			{
+				%mine.mineBrick[%queue.pos[%i]].delete();
+			}
+		}
+
+		%angleId = getRandom(0,3);
+		if (%angleId == 0)
+		{
+			%transform = vectorAdd(vectorScale(vectorAdd(%queue.pos[%i],"0.5 0.5 0.5"),2),%mine.point) SPC " 1 0 0 0";
+		}
+		else if (%angleId == 1)
+		{
+			%transform = vectorAdd(vectorScale(vectorAdd(%queue.pos[%i],"0.5 0.5 0.5"),2),%mine.point) SPC " 0 0 1" SPC $piOver2;
+		}
+		else if (%angleId == 2)
+		{
+			%transform = vectorAdd(vectorScale(vectorAdd(%queue.pos[%i],"0.5 0.5 0.5"),2),%mine.point) SPC " 0 0 1" SPC $pi;
+		}
+		else if (%angleId == 3)
+		{
+			%transform = vectorAdd(vectorScale(vectorAdd(%queue.pos[%i],"0.5 0.5 0.5"),2),%mine.point) SPC " 0 0 -1" SPC $piOver2;
+		}
+
+		//plant as a dust brick
+		%brick = new fxDTSBrick()
+		{
+			dataBlock = "brickMineCubeData";
+			position = %transform;
+			angleId = %angleId;
+			isPlanted = true;
+			isBasePlate = true;
+			isMineable = true;
+			printId = %type.printId;
+			colorId = %type.colorId;
+			material = %type;
+		};
+		%brick.setTransform(%transform);
+		%mine.bricks.add(%brick);
+		BrickGroup_888888.add(%brick);
+		%plantError = %brick.plant();
+		if(%plantError != 0 && %plantError != 2)
+		{
+			%brick.delete();
+			continue;
+		}
+		%mine.mineBrick[%queue.pos[%i]] = %brick;
+		%brick.setTrusted(1);
+	}
+
+	%queue.index = %i;
+
+	if(%i >= %queue.count)
+	{
+		%queue.index = 0;
+		call(%queue.callback,%queue);
+		%mine.revealQueue.pushToBack(%queue);
+		%mine.revealQueue.remove(%queue);
+		if(!%queue.air)
+		{
+			%mine.dustQueue.add(%queue);
+		}
+		else if(!isFunction(%queue.callback))
+		{
+			%queue.delete();
+		}
+	}
+
+	Schedule(33,%mine,"Mine_RevealQueue",%mine,%thisStartTime);
+}
+
+function Mine_DustQueue(%mine,%lastStartTime)
+{
+	if(%mine.dustQueue.getCount() == 0) // sleep until something happens
+	{
+		Schedule(33,%mine,"Mine_DustQueue",%mine,getSimTime());
+		return;
+	}
+
+	%thisStartTime = getSimTime();
+	%delta = %thisStartTime - %lastStartTime - 33;
+	
+	%queue = %mine.dustQueue.getObject(0);
+	%count = getMin(%queue.count,%queue.index + (1 - %delta / 25) * 100);
+	for(%i = %queue.index; %i < %count; %i++)
+	{
+		%pos = %queue.pos[%i];
+		if(!isObject(%mine.mineBrick[%queue.pos[%i]]))
+		{
+			return;
+		}
+		%x = getWord(%pos,0);
+		%y = getWord(%pos,1);
+		%z = getWord(%pos,2);
+
+		%type = %mine.material;
+
+		%blobs = %mine.octree.searchPoint(%x,%y,%z);
+
+		%partOfBlob = false;
+		if(%blobs !$= "")
+		{
+			%blobcount = getWordCount(%blobs);//would be nice if we could just remove a blob from the octree after it has run out of things but alas we cannot right now
+			for(%j = 0; %j < %blobcount; %j++)
+			{
+				%currBlob = getWord(%blobs,%j);
+				if(vectorDist(%pos,%mine.BlobPosition[%currBlob]) > getWord(%mine.BlobInfo[%currBlob],1))
+				{
+					continue;
+				}
+
+				if(!%mine.BlobVolumeRemaining[%currBlob] || getRandom() > %mine.BlobRemaining[%currBlob] / %mine.BlobVolumeRemaining[%currBlob])
+				{
+					%mine.BlobVolumeRemaining[%currBlob]--;
+					continue;
+				}
+
+				%partOfBlob = true;
+				%type = firstWord(%mine.BlobInfo[%currBlob]);
+				%mine.BlobRemaining[%currBlob]--;
+				%mine.BlobVolumeRemaining[%currBlob]--;
+				break;
+			}
+
+			for(%j = %j + 1; %j < %blobcount; %j++) //removing the volume from the remaining blobs
+			{
+				%currBlob = getWord(%blobs,%j);
+				if(vectorDist(%pos,%mine.BlobPosition[%currBlob]) > getWord(%mine.BlobInfo[%currBlob],1))
+				{
+					continue;
+				}
+
+				%mine.BlobVolumeRemaining[%currBlob]--;
+			}
+		}
+
+		if(!%partOfBlob) // no blobs so we noisey
+		{
+			%noise = %mine.noise;
+			%lodecount = %mine.lodeCount;
+			for(%j = 0; %j < %lodecount; %j++)
+			{
+				%currLode = %mine.lodeInfo[%j];
+				%offset = getWord(%currLode,1) + 0.1; 
+				%scale = getWord(%currLode,2);
+				if(%noise.Sample((%x + %offest) * %scale,(%y + %offest) * %scale,(%z + %offest) * %scale) >= getWord(%currLode,3))
+				{
+					%type = getWord(%currLode,0);
+					break;
+				}
+			}
+		}
+
+		if(%type $= "RockMaterial")
+		{
+			%type = "GravelMaterial";
+		}
+
+		%mine.mineBrick[%pos].setPrint(%type.printId);
+		%mine.mineBrick[%pos].setColor(%type.colorId);
+		%mine.mineBrick[%pos].material = %type;
+	}
+
+	%queue.index = %i;
+
+	if(%i >= %queue.count)
+	{
+		%mine.dustQueue.remove(%queue);
+		%queue.delete();
+	}
+
+	Schedule(33,%mine,"Mine_DustQueue",%mine,%thisStartTime);
+}
+
 function Mine::OnAdd(%mine)
 {
 	$Mine::Set.add(%mine);
@@ -31,6 +266,12 @@ function Mine::OnAdd(%mine)
 	%mine.octree = Octree_Create(%mine.width > %mine.height ? %mine.width * 16 : %mine.height * 16);
 	%mine.blobCount = 0;
 	%mine.lodeCount = 0;
+
+	%mine.revealQueue = new SimSet();
+	Schedule(33,%mine,"Mine_RevealQueue",%mine,getSimTime());
+
+	%mine.dustQueue = new SimSet();
+	Schedule(33,%mine,"Mine_DustQueue",%mine,getSimTime());
 
 	//make barriers
 	%x = getWord(%mine.point,0) + 16;
@@ -105,10 +346,10 @@ function Mine::OnAdd(%mine)
 	%numCubes = %cubesPerFloor * %height;
 	for(%i = 0; %i < %numCubes; %i++)
 	{
-		%newX = %x + 32 * (%i % %width);
-		%newY = %y + 32 * (mFloor(%i / %width) % %width);
+		%nx = %x + 32 * (%i % %width);
+		%ny = %y + 32 * (mFloor(%i / %width) % %width);
 
-		if(%newX > %minX && %newX < %maxX && %newY > %minY && %newY < %maxY) //hollow cube
+		if(%nx > %minX && %nx < %maxX && %ny > %minY && %ny < %maxY) //hollow cube
 		{
 			continue;
 		}
@@ -116,7 +357,7 @@ function Mine::OnAdd(%mine)
 		%brick = new fxDTSBrick()
 		{
 			dataBlock = "brick64CubeData";
-			position = %newX SPC %newY SPC (%z + 32 * mFloor(%i / %cubesPerFloor));
+			position = %nx SPC %ny SPC (%z + 32 * mFloor(%i / %cubesPerFloor));
 			isPlanted = true;
 			isBasePlate = true;
 			isBarrier = true;
@@ -212,7 +453,7 @@ function Mine::From(%mine,%pos)
 	return vectorAdd(vectorScale(%pos,2),%mine.point);
 }
 
-//plants a brick representing a place within the mine's grid starting at the mine's point and ending later idk lol
+// plants a brick representing a place within the mine's grid starting at the mine's point and ending later idk lol
 function Mine::Reveal(%mine,%pos)
 {
 	%x = mFloor(getWord(%pos,0));
@@ -235,30 +476,13 @@ function Mine::Reveal(%mine,%pos)
 	%blobs = $mine.octree.searchPoint(%x,%y,%z);
 
 
-	if(%blobs $= "") // no blobs so we noisey
+	%partOfBlob = false;
+	if(%blobs !$= "")
 	{
-
-		%noise = %mine.noise;
-		%count = %mine.lodeCount;
-		for(%i = 0; %i < %count; %i++)
+		%blobcount = getWordCount(%blobs);//would be nice if we could just remove a blob from the octree after it has run out of things but alas we cannot right now
+		for(%j = 0; %j < %blobcount; %j++)
 		{
-			%currLode = %mine.lodeInfo[%i];
-			%offset = getWord(%currLode,1) + 0.1; 
-			%newpos = vectorScale(vectorAdd(%pos,%offset SPC %offset SPC %offset),getWord(%currLode,2));
-			if(%noise.Sample(getWord(%newpos,0),getWord(%newpos,1),getWord(%newpos,2)) >= getWord(%currLode,3))
-			{
-				%type = getWord(%currLode,0);
-				break;
-			}
-		}
-
-	}
-	else //see what we get from our in range blobs
-	{
-		%count = getWordCount(%blobs);//would be nice if we could just remove a blob from the octree after it has run out of things but alas we cannot right now
-		for(%i = 0; %i < %count; %i++)
-		{
-			%currBlob = getWord(%blobs,%i);
+			%currBlob = getWord(%blobs,%j);
 			if(vectorDist(%pos,%mine.BlobPosition[%currBlob]) > getWord(%mine.BlobInfo[%currBlob],1))
 			{
 				continue;
@@ -270,21 +494,39 @@ function Mine::Reveal(%mine,%pos)
 				continue;
 			}
 
+			%partOfBlob = true;
 			%type = firstWord(%mine.BlobInfo[%currBlob]);
 			%mine.BlobRemaining[%currBlob]--;
 			%mine.BlobVolumeRemaining[%currBlob]--;
 			break;
 		}
 
-		for(%i = %i + 1; %i < %count; %i++) //removing the volume from the remaining blobs
+		for(%j = %j + 1; %j < %blobcount; %j++) //removing the volume from the remaining blobs
 		{
-			%currBlob = getWord(%blobs,%i);
+			%currBlob = getWord(%blobs,%j);
 			if(vectorDist(%pos,%mine.BlobPosition[%currBlob]) > getWord(%mine.BlobInfo[%currBlob],1))
 			{
 				continue;
 			}
 
 			%mine.BlobVolumeRemaining[%currBlob]--;
+		}
+	}
+
+	if(!%partOfBlob) // no blobs so we noisey
+	{
+		%noise = %mine.noise;
+		%lodecount = %mine.lodeCount;
+		for(%j = 0; %j < %lodecount; %j++)
+		{
+			%currLode = %mine.lodeInfo[%j];
+			%offset = getWord(%currLode,1) + 0.1; 
+			%scale = getWord(%currLode,2);
+			if(%noise.Sample((%x + %offest) * %scale,(%y + %offest) * %scale,(%z + %offest) * %scale) >= getWord(%currLode,3))
+			{
+				%type = getWord(%currLode,0);
+				break;
+			}
 		}
 	}
 
@@ -331,15 +573,79 @@ function Mine::Reveal(%mine,%pos)
 	%plantError = %brick.plant();
 	if(%plantError != 0 && %plantError != 2)
 	{
-		talk("FAILED TO REVEAL BRICK FUCK!!!!!!!");
 		%brick.delete();
-		return;
+		return false;
 	}
 	%mine.mineBrick[%pos] = %brick;
 	%brick.setTrusted(1);
+	return true;
 }
 
-//TODO: make a cache of these values so i can reuse them later for faster execution
+//function to be used for spherical explosions
+function Mine::Explode(%mine,%point,%radius)
+{
+	%shellRadius = %radius + 1;
+	%point = mFloor(getWord(%point,0)) SPC mFloor(getWord(%point,1)) SPC mFloor(getWord(%point,2));
+	%x = getWord(%point,0);
+	%y = getWord(%point,1);
+	%z = getWord(%point,2);
+	%center = vectorAdd(%point,%shellRadius SPC %shellRadius SPC %shellRadius);
+	%cx = getWord(%center,0);
+	%cy = getWord(%center,1);
+	%cz = getWord(%center,2);
+	%outerRadiusSquare = %shellRadius * %shellRadius;
+	%innerRadiusSquare = %radius * %radius;
+	%diameter = %shellRadius * 2;
+	
+	//remove some volume from in range blobs
+	%blobs = %mine.octree.searchArea(%x,%y,%z,%radius * 2);
+
+	%blobcount = getWordCount(%blobs); //blow some ore up
+	for(%j = 0; %j < %blobcount; %j++)
+	{
+		%currBlob = getWord(%blobs,%j);
+		%threshold = getWord(%mine.BlobInfo[%currBlob],1) + %radius + 1;
+		if(vectorDist(%point,%mine.BlobPosition[%currBlob]) > %threshold)
+		{
+			continue;
+		}
+		%mine.BlobVolumeRemaining[%currBlob] -=  (1 - vectorDist(%point,%mine.BlobPosition[%currBlob]) / %threshold) * %mine.BlobVolumeRemaining[%currBlob];
+	}
+
+	%diameter += 1;
+
+	%queue = %mine.queue();
+	%deleteQueue = %mine.queue();
+
+	%count = %diameter * %diameter * %diameter;
+	for(%i = 0; %i < %count; %i++)
+	{
+		%nx = (%i % %diameter) + %x;
+		%ny = (mFloor(%i / %diameter) % %diameter) + %y;
+		%nz =  mFloor(%i / (%diameter * %diameter)) + %z;
+		
+		if((%cx - %nx) * (%cx - %nx) + (%cy - %ny) * (%cy - %ny) + (%cz - %nz) * (%cz - %nz) > %outerRadiusSquare)
+		{
+			continue;
+		}
+		
+		if((%cx - %nx) * (%cx - %nx) + (%cy - %ny) * (%cy - %ny) + (%cz - %nz) * (%cz - %nz) <= %innerRadiusSquare)
+		{
+			%deleteQueue.pos[%deleteQueue.count++ - 1] = %nx SPC %ny SPC %nz;
+			continue;
+		}
+
+		if(%mine.mineBrick[%nx SPC %ny SPC %nz] !$= "")
+		{
+			continue;
+		}
+
+		%queue.pos[%queue.count++ - 1] = %nx SPC %ny SPC %nz;
+	}
+	%queue.reveal();
+	%deleteQueue.reveal(true);
+}
+
 function Mine::AirCube(%mine,%point,%width,%height)
 {
 	%point = mFloor(getWord(%point,0)) SPC mFloor(getWord(%point,1)) SPC mFloor(getWord(%point,2));
@@ -364,6 +670,7 @@ function Mine::RevealCube(%mine,%point,%width,%height)
 	%count = %width * %width * %height;
 	for(%i = 0; %i < %count; %i++)
 	{
+		
 		%mine.reveal(vectorAdd((%i % %width) SPC (mFloor(%i / %width) % %width) SPC mFloor(%i / (%width * %width)), %point));
 	}
 }
@@ -400,25 +707,25 @@ function Mine::RevealSphere(%mine,%point,%radius)
 	%y = getWord(%point,1);
 	%z = getWord(%point,2);
 	%center = vectorAdd(%point,%radius SPC %radius SPC %radius);
-	%xC = getWord(%center,0);
-	%yC = getWord(%center,1);
-	%zC = getWord(%center,2);
+	%cx = getWord(%center,0);
+	%cy = getWord(%center,1);
+	%cz = getWord(%center,2);
+	%radiusSquare = %radius * %radius;
 	%diameter = %radius * 2 + 1;
 
 	%count = %diameter * %diameter * %diameter;
 	for(%i = 0; %i < %count; %i++)
 	{
-		%newX = (%i % %diameter) + %x;
-		%newY = (mFloor(%i / %diameter) % %diameter) + %y;
-		%newZ =  mFloor(%i / (%diameter * %diameter)) + %z;
-		if(%mine.mineBrick[%newX SPC %newY SPC %newZ] !$= "" || (%xC - %newX) * (%xC - %newX) + (%yC - %newY) * (%yC - %newY) + (%zC - %newZ) * (%zC - %newZ) > %radius * %radius)
+		%nx = (%i % %diameter) + %x;
+		%ny = (mFloor(%i / %diameter) % %diameter) + %y;
+		%nz =  mFloor(%i / (%diameter * %diameter)) + %z;
+		if(%mine.mineBrick[%nx SPC %ny SPC %nz] !$= "" || (%cx - %nx) * (%cx - %nx) + (%cy - %ny) * (%cy - %ny) + (%cz - %nz) * (%cz - %nz) > %radiusSquare)
 		{
 			continue;
 		}
-		%mine.reveal(%newX SPC %newY SPC %newZ);
+		%mine.reveal(%nx SPC %ny SPC %nz);
 	}
 }
-
 
 // this is for debugging only lol
 function Mine_RevealAll(%mine)
@@ -431,4 +738,3 @@ function Mine_RevealAll(%mine)
 		%mine.reveal(%pos);
 	}
 }
-

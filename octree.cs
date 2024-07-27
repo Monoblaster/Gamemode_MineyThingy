@@ -118,3 +118,38 @@ function Octree::SearchPoint(%nextChild,%x,%y,%z)
 
 	return lTrim(%list);
 }
+
+//will return all things that intersect with this area
+function Octree::SearchArea(%nextChild,%xa,%ya,%za,%size)
+{
+	%xb = %xa + %size;
+	%yb = %ya + %size;
+	%zb = %za + %size;
+	while(%nextChild !$= "")
+	{
+		%currTree = %nextChild;
+		%nextChild = "";
+
+		%count = %currTree.ItemCount;
+		for(%i = 0; %i < %count; %i++)
+		{
+			if(%xb >= %currtree.itemXA[%i] && %xa < %currtree.itemXB[%i] && %yb >= %currtree.itemYA[%i] && %ya < %currtree.itemYA[%i] && %zb >= %currtree.itemZA[%i] && %za < %currtree.itemZA[%i])
+			{
+				%list = %list SPC %currtree.itemThing[%i];
+			}
+		}
+
+		for(%i = 0; %i < 8; %i++)
+		{
+			%child = %currTree.child[%i];
+			//does the child exist?
+			if(%child !$= "" && %xb >= %child.CornerX && %xa < %child.CornerX + %child.size && %yb >= %child.CornerY && %ya < %child.CornerY + %child.size && %zb >= %child.CornerZ && %za < %child.CornerZ + %child.size)
+			{
+				%nextChild = %child;
+				break;
+			}
+		}
+	}
+
+	return lTrim(%list);
+}

@@ -1,8 +1,8 @@
-ADDON Gamemode_MineyThingy
 ADDON Script_EasyExecute
 ADDON Server_Redeval
 ADDON Print_ModTer_Default
 ADDON Print_ModTer_Test
+ADDON Gamemode_MineyThingy
 
 $EnvGuiServer::SimpleMode 1
 $EnvGuiServer::SkyFile Add-Ons/Sky_Skylands/Skylands.dml

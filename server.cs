@@ -98,7 +98,7 @@ function Armor::onCollision (%this, %obj, %col, %vec, %speed)
 	}
 	else if (%colClassName $= "Player" || %colClassName $= "AIPlayer")
 	{
-		if (%col.getDataBlock ().canRide && %this.rideAble && %this.nummountpoints > 0)
+		if (%col.getDataBlock().canRide && %this.rideAble && %this.nummountpoints > 0)
 		{
 			if (getSimTime () - %col.lastMountTime <= $Game::MinMountTime)
 			{
@@ -224,9 +224,15 @@ function Armor::onCollision (%this, %obj, %col, %vec, %speed)
 	}
 }
 
-Material_Define("Dirt",8,"TTdirt01");
-Material_Define("Rock",7,"rockface");
-Material_Define("Iron",4,"brickTOP",true); // temporary texture
+function makeMaterials()
+{
+	Material_Define("Dirt",8,"TTdirt01");
+	Material_Define("Rock",7,"rockface");
+	Material_Define("Gravel",7,"Old_Stone_Road");
+	Material_Define("Dust",5,"whitesand");
+	Material_Define("Iron",4,"brickTOP",true); // temporary texture
+}
+schedule(1000,0,"makeMaterials");
 
 function test()
 {
@@ -247,14 +253,11 @@ function test()
 
 function explode()
 {
-	%radius = 10;
+	%radius = 14;
 	%pos = vectorSub("15 15 15",%radius SPC %radius SPC %radius);
-	// pTimer_start("time");
-	// $mine.Airsphere(%pos,%radius);
-	// pTimer_end("time");talk(ptimer_duration("time"));
-	pTimer_start("time");
-	$mine.Revealsphere(vectorSub(%pos,"1 1 1"),%radius + 1);
-	pTimer_end("time");talk(ptimer_duration("time"));
+	ptimer_start("time");
+	$mine.Explode(%pos,%radius);
+	ptimer_end("time");talk(ptimer_duration("time"));
 }
 
 function serverCmdCanColor(%client)
