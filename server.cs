@@ -6,8 +6,6 @@ exec("./newPop.cs");
 exec("./material.cs");
 exec("./mine.cs");
 
-
-
 datablock fxDTSBrickData (brick64CubeData)
 {
 	brickFile = "./bricks/64Cube.blb";
@@ -26,8 +24,291 @@ datablock fxDTSBrickData(brickMineCubeData)
 	printAspectRatio = "ModTer";
 };
 
+datablock ParticleData(MiningBombStaticParticle1)
+{
+	textureName = "./particles/spark_01.png";
+
+	inheritedVelFactor = 1;
+	lifetimeMS = 100;
+	lifetimeVarianceMS = 50;
+
+	sizes[0] = 1;
+	colors[0] = "0 1 1 1";
+	times[0] = 0;
+
+	sizes[1] = 1;
+	colors[1] = "0 1 1 0";
+	times[1] = 1;
+};
+
+datablock ParticleData(MiningBombStaticParticle2 : MiningBombStaticParticle1)
+{
+	textureName = "./particles/spark_02.png";
+};
+
+datablock ParticleData(MiningBombStaticParticle3 : MiningBombStaticParticle1)
+{
+	textureName = "./particles/spark_03.png";
+};
+
+datablock ParticleData(MiningBombStaticParticle4 : MiningBombStaticParticle1)
+{
+	textureName = "./particles/spark_04.png";
+};
+
+datablock particleEmitterData(MiningBombStaticEmitter)
+{
+	particles = "MiningBombStaticParticle1" TAB "MiningBombStaticParticle2" TAB "MiningBombStaticParticle3" TAB "MiningBombStaticParticle4";
+	lifetimeMS = 2000;
+	lifetimeVarianceMS = 0;
+	ejectionPeriodMS = 100;
+	orientParticles = true;
+};
+
+datablock DebrisData(MiningBombDebris)
+{
+	emitters[0] = "MiningBombStaticEmitter";
+	shapeFile = "./shapes/bombdepleted.dts";
+	lifetime = 5.0;
+	minSpinSpeed = -1000;
+	maxSpinSpeed = 1000;
+	elasticity = 0.8;
+	friction = 0.2;
+	numBounces = 2;
+	staticOnMaxBounce = true;
+	snapOnMaxBounce = false;
+	fade = true;
+
+	gravModifier = 1;
+};
+
+datablock AudioDescription (MiningBombExplosionSoundDescription)
+{
+	volume = 1;
+	isLooping = 0;
+	is3D = 1;
+	ReferenceDistance = 10;
+	maxDistance = 100;
+	type = $SimAudioType;
+};
+
+datablock AudioProfile (MiningBombExplosionSound)
+{
+	fileName = "./sounds/bombexplosion.wav";
+	description = MiningBombExplosionSoundDescription;
+	preload = 1;
+};
+
+datablock ExplosionData(MiningBombExplosion)
+{
+	lifetimeMs = 100;
+	soundProfile = "MiningBombExplosionSound";
+
+	lightStartColor = "0 1 1";
+	lightStartRadius = 10;
+
+	lightEndColor = "0 1 1";
+	lightEndRadius = 0;
+
+	debris = "MiningBombDebris";
+	debrisNum = 1;
+	debrisNumVariance = 0;
+	debrisPhiMin = 0;
+	debrisPhiMax = 360;
+	debrisThetaMin = 350;
+	debrisThetaMax = 360;
+	debrisVelocity = 6;
+	debrisVelocityVariance = 0;
+
+	particleEmitter = MiningBombStaticEmitter;
+	particleRadius = 10;
+	particleDensity = 100;
+};
+
+datablock ProjectileData(MiningBombProjectile)
+{
+	projectileShapeName = "./shapes/bombprojectile.dts";
+
+	muzzleVelocity      = 50;
+	velInheritFactor    = 1;
+
+	armingDelay         = 20000;
+	lifetime            = 20000;
+	fadeDelay           = 20000;
+	bounceElasticity    = 0.1;
+	bounceFriction      = 0;
+	isBallistic         = true;
+	gravityMod = 0.50;
+
+	hasLight = true;
+	lightColor = "0 1 1";
+	lightRadius = 10;
+
+	explosion = "MiningBombExplosion";
+
+	miningRadius = 3;
+
+	uiName = "Mining Bomb";
+};
+
+datablock ProjectileData(MiningBombNoLightProjectile : MiningBombProjectile)
+{
+	className = "MiningBombProjectile";
+	hasLight = false;
+};
+
+datablock AudioProfile (CountDownBeepSound)
+{
+	fileName = "./sounds/countdownbeep.wav";
+	description = AudioClosest3d;
+	preload = 1;
+};
+
+datablock AudioProfile (ArmBeepSound)
+{
+	fileName = "./sounds/armbeep.wav";
+	description = AudioClosest3d;
+	preload = 1;
+};
+
+function MiningBombProjectile::ArmLoop(%data,%proj)
+{
+	if(%proj.oldPos == %proj.getPosition())
+	{
+		%proj.landTime = getSimTime();
+		%data.BeepLoop(%proj);
+		return;
+	}
+	%proj.oldPos = %proj.getPosition();
+	%data.schedule(100,"ArmLoop",%proj);
+}
+
+function MiningBombProjectile::BeepLoop(%data,%proj)
+{
+	%elapsedMs = getSimTime() - %proj.landTime;
+
+	if(%proj.getDataBlock().getName() $= "MiningBombProjectile")
+	{
+		%proj.setDataBlock("MiningBombNoLightProjectile");
+	}
+	else
+	{
+		%proj.setDataBlock("MiningBombProjectile");
+	}
+
+	if(%elapsedMS > 2500)
+	{
+		%proj.explode();
+		return;
+	}
+	ServerPlay3D("CountDownBeepSound", %proj.getPosition());
+	%data.schedule(getMax((1 - %elapsedMS / 2500) * 1000,100),"BeepLoop",%proj);
+}
+
+function MiningBombProjectile::OnExplode(%data,%obj,%pos)
+{
+	//TODO: particles and all that
+	// $mine.Explode(vectorSub($mine.to(%obj.getPosition()),(%data.miningRadius + 1) SPC (%data.miningRadius + 1) SPC (%data.miningRadius + 1)),%data.miningRadius);
+}
+
+datablock ItemData(MiningBombItem)
+{
+	candrop = true;
+	uiName = "Explsoive";
+	shapeFile = "./shapes/bomb.dts";
+	image = "MiningBombImage";
+};
+
+datablock ShapeBaseImageData(MiningBombImage)
+{
+	className = "WeaponImage";
+
+	item = "MiningBombItem";
+	shapeFile = "./shapes/bomb.dts";
+	armReady = true;
+
+	projectile = "MiningBombProjectile";
+   	projectileType = "Projectile";
+
+	stateName[0] = "Activate";
+	stateTimeoutValue[0] = 0;
+	stateTransitionOnTimeout[0] = "Ready";
+
+	stateName[1] = "Ready";
+	stateTransitionOnTriggerDown[1] = "Charge";
+	
+	stateName[2] = "Charge";
+	stateScript[2] = "onCharge";
+	stateTimeoutValue[2] = 0.7;
+	stateWaitForTimeout[2] = false;
+	stateTransitionOnTriggerUp[2] = "CancelCharge";
+	stateTransitionOnTimeout[2] = "Charged";
+
+	stateName[3] = "Charged";
+	stateSound[3] = "ArmBeepSound";
+	stateTransitionOnTriggerUp[3] = "Fire";
+
+	stateName[4] = "Fire";
+	stateScript[4] = "onFire";
+	stateTimeoutValue[4] = 0.5;
+	stateFire[4] = true;
+	stateTransitionOnTimeout[4]	= "Ready";
+
+	stateName[5] = "CancelCharge";
+	stateScript[5] = "onCancelCharge";
+	stateTimeoutValue[5] = 0.01;
+	stateTransitionOnTimeout[5] = "Ready";
+};
+
+function MiningBombImage::OnCharge(%db,%obj,%slot)
+{
+	%obj.playthread(2, "spearReady");
+}
+
+function MiningBombImage::OnCancelCharge(%db,%obj,%slot)
+{
+	%obj.playthread(2, "root");
+}
+
+function MiningBombImage::OnFire(%db,%obj,%slot)
+{
+	%obj.playthread(2, "spearThrow");
+
+	%projectile = %db.projectile;
+	%initPos = %obj.getMuzzlePoint(%slot);
+	%muzzlevector = %obj.getMuzzleVector(%slot);
+
+	if (%obj.isFirstPerson()) //are we close to an object?
+	{
+		%start = %obj.getEyePoint();
+		%raycast = containerRayCast(%start, VectorAdd(%start, VectorScale(%obj.getEyeVector(), 5)), $TypeMasks::PlayerObjectType | $TypeMasks::VehicleObjectType | $TypeMasks::FxBrickObjectType 
+		| $TypeMasks::StaticShapeObjectType | $TypeMasks::StaticObjectType, %obj, %obj.getObjectMount());
+		if (%raycast)
+		{
+			if (VectorLen(VectorSub(getWords(%raycast,1,3), %start)) < 3.1)
+			{
+				%muzzlevector = %obj.getEyeVector ();
+				%initPos = %start;
+			}
+		}
+	}
+
+	%muzzleVelocity = VectorAdd(VectorScale(%muzzlevector, VectorScale(%projectile.muzzleVelocity, getWord(%obj.getScale(), 2))), VectorScale(%obj.getVelocity(), %projectile.velInheritFactor));
+	%p = new (%db.projectileType) ("")
+	{
+		dataBlock = %projectile;
+		initialVelocity = %muzzleVelocity;
+		initialPosition = %initPos;
+		sourceObject = %obj;
+		sourceSlot = %slot;
+		client = %obj.client;
+	};
+	%p.setScale(%obj.getScale());
+	%projectile.ArmLoop(%p);
+}
 
 //TODO: this is tempory mining
+//TODO: replace $mine with a function or field to figure out what mine a person is in
 package Mining
 {
 	function Armor::onTrigger(%db, %obj, %num, %down)
@@ -52,7 +333,7 @@ package Mining
 						dataBlock = %brick.material.getName() @ "Item";
 						position = %brick.getTransform();
 					};
-					%item.setVelocity(vectorNormalize(getRandom() - 0.5 SPC getRandom() - 0.5 SPC getRandom() - 0.5));
+					%item.setVelocity(vectorScale(vectorNormalize(getRandom() - 0.5 SPC getRandom() - 0.5 SPC getRandom() - 0.5),2));
 					%item.schedulePop();
 				}
 				else
@@ -60,6 +341,7 @@ package Mining
 					%obj.client.placableInventoryDirt++;
 				}
 
+				$mine.mineBrick[%pos] = true;
 				%brick.delete();
 				return;
 			}
@@ -236,28 +518,27 @@ schedule(1000,0,"makeMaterials");
 
 function test()
 {
-	$mine.delete();
-	$mine = mine_create("0 0 0.2",2,2,Material("Dirt"));
-	$mine.Lode(Material("Rock"),0,0.1,0.6);
+	%p = new Projectile()
+	{
+		dataBlock = MiningBombProjectile;
+		initialVelocity = "0 0 0";
+		initialPosition = "0 0 0";
+	};
+	%p.schedule(33,"explode");
 
-	$mine.RandomBlobs(Material("Iron"),328,10,0.5);
+	// $mine.delete();
+	// $mine = mine_create("0 0 0.2",4,4,Material("Dirt"));
+	// $mine.Lode(Material("Rock"),0,0.1,0.6);
 
-	// Mine_RevealAll($mine);
+	// $mine.RandomBlobs(Material("Iron"),328,10,0.5);
 
-	explode();
-	ClientGroup.getObject(0).setMaxTools(7);
-	ClientGroup.getObject(0).player.clearTools();
-	ClientGroup.getObject(0).player.settransform($mine.From("9 9 8"));
-	ClientGroup.getObject(0).InventoryStack.push(Inventory("Base"));
-}
+	// $mine.airCube("14 14 14",3,3);
+	// $mine.revealCube("13 13 13",5,5);
 
-function explode()
-{
-	%radius = 14;
-	%pos = vectorSub("15 15 15",%radius SPC %radius SPC %radius);
-	ptimer_start("time");
-	$mine.Explode(%pos,%radius);
-	ptimer_end("time");talk(ptimer_duration("time"));
+	// ClientGroup.getObject(0).setMaxTools(7);
+	// ClientGroup.getObject(0).player.clearTools();
+	// ClientGroup.getObject(0).player.settransform($mine.From("15 15 15"));
+	// ClientGroup.getObject(0).InventoryStack.push(Inventory("Base"));
 }
 
 function serverCmdCanColor(%client)
@@ -279,8 +560,8 @@ function serverCmdPrintName(%client)
 }
 
 //assets
-//remap the mining cube so i have 6 unique sides
 //make ore model and ore cube texture
+//need explosive model
 
 //ideas:
 // All materials have an item form
@@ -298,4 +579,7 @@ function serverCmdPrintName(%client)
 // when this happens it will become a ghost of the in progress building and if near a core will be built if it has the mats. if not players can supply it manually
 // you can input materials into your base's core or a buildible mini core to store them in the "cloud"
 // materials in the cloud will be used automatically if there is a mini core or core nearby. materials can also be taken out by players (except for objective mats)
-// building ideas: item manufacturer (multiple tiers probably), turrets for base defense,  
+// building ideas: item manufacturer (multiple tiers probably), turrets for base defense, 
+
+//TODO: add explosive item
+//TODO: construction and concretea

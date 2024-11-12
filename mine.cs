@@ -57,7 +57,7 @@ function Mine_RevealQueue(%mine,%lastStartTime)
 	
 	%queue = %mine.revealQueue.getObject(0);
 
-	%type = DustMaterial;
+	%type = "DustMaterial";
 
 	if(%queue.air)
 	{
@@ -70,23 +70,35 @@ function Mine_RevealQueue(%mine,%lastStartTime)
 	%count = getMin(%queue.count,%queue.index + (1 - %delta / 25) * 100);
 	for(%i = %queue.index; %i < %count; %i++)
 	{
+		%pos = %queue.pos[%i];
 		if(%queue.air)
 		{
-			if(%noise.Sample((getWord(%queue.pos[%i],0) + %offset) * %scale, (getWord(%queue.pos[%i],1) + %offset) * %scale, (getWord(%queue.pos[%i],2) + %offset) * %scale) < %threshold)
+			%brick = %mine.mineBrick[%pos];
+			if(%brick.material !$= "RockMaterial" && %noise.Sample((getWord(%pos,0) + %offset) * %scale, (getWord(%pos,1) + %offset) * %scale, (getWord(%pos,2) + %offset) * %scale) < %threshold)
 			{
-				if(isObject(%mine.mineBrick[%queue.pos[%i]]))
+				if(isObject(%brick))
 				{
-					%mine.mineBrick[%queue.pos[%i]].delete();
-					continue;
+					%brick.delete();
 				}
-				%mine.mineBrick[%queue.pos[%i]] = true;
+				%mine.mineBrick[%pos] = true;
 				continue;
 			}
 
-			%type = GravelMaterial;
-			if(isObject(%mine.mineBrick[%queue.pos[%i]]))
+			if(%brick == true)
 			{
-				%mine.mineBrick[%queue.pos[%i]].delete();
+				continue;
+			}
+
+			%type = "GravelMaterial";
+			if(isObject(%brick))
+			{
+				if(%brick.material $= %type)
+				{
+					%mine.mineBrick[%pos] = true;
+					%brick.delete();
+					continue;
+				}
+				%brick.delete();
 			}
 		}
 
@@ -130,7 +142,7 @@ function Mine_RevealQueue(%mine,%lastStartTime)
 			%brick.delete();
 			continue;
 		}
-		%mine.mineBrick[%queue.pos[%i]] = %brick;
+		%mine.mineBrick[%pos] = %brick;
 		%brick.setTrusted(1);
 	}
 
@@ -173,7 +185,7 @@ function Mine_DustQueue(%mine,%lastStartTime)
 		%pos = %queue.pos[%i];
 		if(!isObject(%mine.mineBrick[%queue.pos[%i]]))
 		{
-			return;
+			continue;
 		}
 		%x = getWord(%pos,0);
 		%y = getWord(%pos,1);
@@ -445,7 +457,8 @@ function Mine::Lode(%mine,%material,%offset,%scale,%threshold)
 
 function Mine::To(%mine,%pos)
 {
-	return vectorScale(vectorSub(%pos,%mine.point),1/2);
+	%a = vectorScale(vectorSub(%pos,%mine.point),1/2);
+	return mFloor(getWord(%a,0)) SPC mFloor(getWord(%a,1)) SPC mFloor(getWord(%a,2));
 }
 
 function Mine::From(%mine,%pos)
