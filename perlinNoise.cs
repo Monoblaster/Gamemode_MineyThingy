@@ -36,9 +36,9 @@ function PerlinNoise::Sample(%obj,%x,%y,%z)
 	%yi = %y & 255;
 	%zi = %z & 255;
 
-	%x -= mFloor(%x); //x y and z in cube space
-	%y -= mFloor(%y);
-	%z -= mFloor(%z);
+	%x -= %x | 0; //x y and z in cube space
+	%y -= %y | 0;
+	%z -= %z | 0;
 
 	%hasha = %obj.p[%obj.p[%obj.p[%xi]+ %yi]+ %zi] & 15;
 	%hashb = %obj.p[%obj.p[%obj.p[%xi]+ %yi+1]+ %zi] & 15;
